@@ -1,96 +1,51 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>GitHub MQ-2 Dashboard</title>
-    <style>
-        html { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; text-align: center; background-color: #f4f6f9; margin: 0; padding: 0; }
-        .card { background-color: white; padding: 40px; margin: 60px auto; width: 85%; max-width: 420px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-        h1 { color: #2d3748; font-size: 1.6rem; margin-bottom: 5px; }
-        .device-id { color: #a0aec0; font-size: 0.9rem; margin-bottom: 25px; }
-        .value { font-size: 5rem; font-weight: bold; color: #3182ce; margin: 20px 0; transition: color 0.3s; }
-        .status { padding: 12px 28px; font-size: 1.2rem; font-weight: bold; border-radius: 12px; color: white; display: inline-block; transition: background-color 0.3s; }
-        .green { background-color: #48bb78; }
-        .red { background-color: #e53e3e; animation: pulse 1s infinite; }
-        .btn-noti { background-color: #4a5568; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; margin-top: 20px; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.03); } 100% { transform: scale(1); } }
-    </style>
-</head>
-<body>
+<script>
+    // *** แก้ไขให้ชื่อตรงกับ DEVICE_ID ในบอร์ด KidBright ***
+    const deviceID = "jakkapong-mq2-cloud"; 
+    const gasThreshold = 2000; 
+    let hasNotified = false;
 
-    <div class="card">
-        <h1>ระบบตรวจจับก๊าซและควันไฟ</h1>
-        <div class="device-id">เชื่อมต่อระบบ Cloud ผ่าน GitHub Pages</div>
-        
-        <p>ระดับความเข้มข้นปัจจุบัน (MQ-2)</p>
-        <div id="gas-display" class="value">---</div>
-        <div id="status-display" class="status green">กำลังโหลดข้อมูล...</div>
-        
-        <br>
-        <button class="btn-noti" onclick="requestNotificationPermission()">🔔 เปิดการแจ้งเตือนบนหน้าจอมือถือ/คอม</button>
-    </div>
-
-    <script>
-        // *** แก้ไขตรงนี้ให้ตรงกับในบอร์ด KidBright ***
-        const deviceID = "my_unique_kidbright_mq2"; 
-        const gasThreshold = 2000; 
-        let hasNotified = false;
-
-        // ฟังก์ชันขออนุญาตแจ้งเตือนบนหน้าจอระบบปฏิบัติการ
-        function requestNotificationPermission() {
-            if ("Notification" in window) {
-                Notification.requestPermission().then(permission => {
-                    if (permission === "granted") {
-                        alert("เปิดระบบแจ้งเตือนสำเร็จ! ระบบจะเด้งเตือนเมื่อมีแก๊สรั่ว");
-                    }
-                });
-            } else {
-                alert("เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือนหน้าจอ");
-            }
+    function requestNotificationPermission() {
+        if ("Notification" in window) {
+            Notification.requestPermission().then(permission => {
+                if (permission === "granted") alert("เปิดระบบแจ้งเตือนสำเร็จ!");
+            });
         }
+    }
 
-        // ฟังก์ชันดึงค่าจาก Cloud dweet.io มาอัปเดตบนหน้าเว็บ GitHub
-        function fetchGasData() {
-            fetch(`https://dweet.io{deviceID}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.this === "succeeded" && data.with.length > 0) {
-                        const gasValue = data.with[0].content.gas;
-                        
-                        // อัปเดตตัวเลขบนหน้าจอ
-                        document.getElementById("gas-display").innerText = gasValue;
-                        
-                        const statusDisplay = document.getElementById("status-display");
-                        const gasDisplay = document.getElementById("gas-display");
+    function fetchGasData() {
+        // ดึงค่าผ่านระบบคลาวด์ dweet.io ส่วนกลาง (เปิดดูที่ไหนบนโลกก็ได้)
+        fetch(`https://dweet.io{deviceID}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.this === "succeeded" && data.with.length > 0) {
+                    const gasValue = data.with[0].content.gas;
+                    
+                    document.getElementById("gas-display").innerText = gasValue;
+                    const statusDisplay = document.getElementById("status-display");
+                    const gasDisplay = document.getElementById("gas-display");
 
-                        if (gasValue > gasThreshold) {
-                            statusDisplay.innerText = "⚠️ DANGER! พบก๊าซหรือควันไฟ";
-                            statusDisplay.className = "status red";
-                            gasDisplay.style.color = "#e53e3e";
+                    if (gasValue > gasThreshold) {
+                        statusDisplay.innerText = "⚠️ DANGER! พบก๊าซหรือควันไฟ";
+                        statusDisplay.className = "status red";
+                        gasDisplay.style.color = "#e53e3e";
 
-                            // ตรวจสอบและส่งการแจ้งเตือนเด้งขึ้นหน้าจอ (Push Notification)
-                            if (!hasNotified && Notification.permission === "granted") {
-                                new Notification("🚨 ตรวจพบสัญญาณอันตราย!", {
-                                    body: `ขณะนี้ค่าควันและก๊าซพุ่งสูงเกินเกณฑ์: ${gasValue}`,
-                                    icon: "https://flaticon.com"
-                                });
-                                hasNotified = true; // ล็อกไว้ไม่ให้ส่งรัวๆ
-                            }
-                        } else {
-                            statusDisplay.innerText = "✅ System Normal (ปกติ)";
-                            statusDisplay.className = "status green";
-                            gasDisplay.style.color = "#3182ce";
-                            hasNotified = false; // ปลดล็อกเมื่อสถานะกลับมาปลอดภัย
+                        if (!hasNotified && Notification.permission === "granted") {
+                            new Notification("🚨 ตรวจพบสัญญาณอันตราย!", {
+                                body: `ขณะนี้ค่าควันและก๊าซพุ่งสูงเกินเกณฑ์: ${gasValue}`,
+                            });
+                            hasNotified = true;
                         }
+                    } else {
+                        statusDisplay.innerText = "✅ System Normal (ปกติ)";
+                        statusDisplay.className = "status green";
+                        gasDisplay.style.color = "#3182ce";
+                        hasNotified = false;
                     }
-                })
-                .catch(err => console.error("Error fetching data:", err));
-        }
+                }
+            })
+            .catch(err => console.error("Error:", err));
+    }
 
-        // วนลูปดึงข้อมูลจากอินเทอร์เน็ตทุกๆ 2 วินาทีโดยที่หน้าเว็บไม่ต้องกดรีเฟรช
-        setInterval(fetchGasData, 2000);
-        fetchGasData();
-    </script>
-</body>
-</html>
+    setInterval(fetchGasData, 2000);
+    fetchGasData();
+</script>
