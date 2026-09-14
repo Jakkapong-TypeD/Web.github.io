@@ -1,45 +1,62 @@
-import machine
-import time
-import network
-import socket
+    <script>
+        // กำหนด ID ให้ตรงกับที่ตั้งไว้ในบอร์ด KidBright
+        const deviceID = "jakkapong-mq2-data"; 
+        const gasThreshold = 2000; // ตั้งค่าระดับแก๊สอันตราย (ปรับเปลี่ยนได้ตามเหมาะสม)
+        let hasNotified = false;
 
-# 1. ตั้งค่า Wi-Fi Hotspot (เช็กว่าปล่อย Hotspot จากโทรศัพท์ไว้แล้ว)
-WIFI_SSID = "English_or_Spanish"
-WIFI_PASS = "123456789"
+        // ฟังก์ชันขออนุญาตแจ้งเตือนบนหน้าจอโทรศัพท์/คอมพิวเตอร์
+        function requestNotificationPermission() {
+            if ("Notification" in window) {
+                Notification.requestPermission().then(permission => {
+                    if (permission === "granted") {
+                        alert("เปิดระบบแจ้งเตือนสำเร็จ! ระบบจะเด้งเตือนเมื่อมีแก๊สรั่ว");
+                    }
+                });
+            } else {
+                alert("เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือนหน้าจอ");
+            }
+        }
 
-# 2. ชื่อไอดีสำหรับส่งเข้าเว็บ GitHub (ตั้งชื่อว่า jakkapong-mq2-data เพื่อให้ตรงกับหน้าเว็บ)
-DEVICE_ID = "jakkapong-mq2-data" 
+        // ฟังก์ชันดึงค่าจากอินเทอร์เน็ตส่วนกลางมาแสดงบน GitHub Pages
+        function fetchGasData() {
+            fetch(`https://dweet.io{deviceID}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.this === "succeeded" && data.with.length > 0) {
+                        const gasValue = data.with[0].content.gas; // ดึงค่าแก๊สล่าสุดออกมา
+                        
+                        // แสดงผลตัวเลขระดับควัน/แก๊สแทนที่เครื่องหมายแดชเดิม
+                        document.getElementById("gas-display").innerText = gasValue;
+                        
+                        const statusDisplay = document.getElementById("status-display");
+                        const gasDisplay = document.getElementById("gas-display");
 
-# 3. ตั้งค่าเซนเซอร์ MQ-2 (พอร์ต I1 ของ KidBright32iP คือขา GPIO36)
-mq2_pin = machine.ADC(machine.Pin(36))
-mq2_pin.atten(machine.ADC.ATTN_11DB)
+                        // เงื่อนไขในการเปลี่ยนสีสถานะและส่งข้อความแจ้งเตือนหน้าจอ
+                        if (gasValue > gasThreshold) {
+                            statusDisplay.innerText = "⚠️ DANGER! พบก๊าซหรือควันไฟ";
+                            statusDisplay.className = "status red";
+                            gasDisplay.style.color = "#e53e3e";
 
-# 4. เริ่มต้นเชื่อมต่อ Wi-Fi
-wlan = network.WLAN(network.STA_IF)
-wlan.active(True)
-wlan.connect(WIFI_SSID, WIFI_PASS)
+                            // ส่งเสียงหรือเด้งหน้าต่างแจ้งเตือนบนจอมือถือ (Push Notification)
+                            if (!hasNotified && Notification.permission === "granted") {
+                                new Notification("🚨 ตรวจพบสัญญาณอันตราย!", {
+                                    body: `ขณะนี้ค่าควันและก๊าซพุ่งสูงเกินเกณฑ์: ${gasValue}`,
+                                    icon: "https://flaticon.com"
+                                });
+                                hasNotified = true; // ล็อกไว้เพื่อไม่ให้แจ้งเตือนเด้งรัวๆ
+                            }
+                        } else {
+                            statusDisplay.innerText = "✅ System Normal (ปกติ)";
+                            statusDisplay.className = "status green";
+                            gasDisplay.style.color = "#3182ce";
+                            hasNotified = false; // ปลดล็อกเมื่อกลับสู่สถานะปกติ ปลอดภัยดี
+                        }
+                    }
+                })
+                .catch(err => console.error("Error fetching data:", err));
+        }
 
-while not wlan.isconnected():
-    time.sleep_ms(500)
-
-print("Wi-Fi Connected!")
-
-while True:
-    gas_value = mq2_pin.read()
-    
-    # ใช้โครงสร้าง Socket พื้นฐานยิงข้อมูลเข้าอินเทอร์เน็ตตรงๆ
-    try:
-        ai = socket.getaddrinfo("dweet.io", 80)
-        addr = ai[-1]
-        s = socket.socket()
-        s.connect(addr)
-        
-        path = "/dweet/for/" + DEVICE_ID + "?gas=" + str(gas_value)
-        req = "GET " + path + " HTTP/1.1\r\nHost: dweet.io\r\nConnection: close\r\n\r\n"
-        s.send(bytes(req, 'utf8'))
-        s.close()
-        print("ส่งข้อมูลเข้า Cloud สำเร็จ ค่าปัจจุบัน:", gas_value)
-    except:
-        print("เครือข่ายขัดข้อง ส่งข้อมูลไม่สำเร็จ")
-        
-    time.sleep(2) # วนลูปส่งค่าทุกๆ 2 วินาที
+        // ตั้งเวลาให้หน้าเว็บดึงข้อมูลมาเปลี่ยนตัวเลขเองโดยอัตโนมัติทุกๆ 2 วินาที (ไม่ต้องกดรีเฟรชหน้าเว็บ)
+        setInterval(fetchGasData, 2000);
+        fetchGasData();
+    </script>
